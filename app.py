@@ -154,9 +154,11 @@ def status():
 def summary():
     conn = get_db_connection()
     cursor = conn.cursor()
+    # Get total patient count
     cursor.execute("SELECT COUNT(*) as count FROM patients")
     count = cursor.fetchone()[0]
     
+    # Get averages, mins, and maxs for all features and target
     cursor.execute("""
         SELECT 
             AVG(age), AVG(sex), AVG(bmi), AVG(bp), AVG(s1), AVG(s2), AVG(s3), AVG(s4), AVG(s5), AVG(s6), AVG(target),
@@ -165,6 +167,7 @@ def summary():
         FROM patients""")
     query = cursor.fetchone()
     
+    # Get risk distribution counts for both scenario thresholds
     cursor.execute("SELECT COUNT(*) as count FROM patients WHERE target > ?", (THRESHOLD_S1,))
     risk_counts_s1 = cursor.fetchone()[0]
 
