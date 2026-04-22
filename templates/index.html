@@ -121,11 +121,11 @@
           const div4 = document.createElement('div');
 
           container.appendChild(div3);
-          const pie_data1 = [{labels:data.risk_pie.x_array, values:data.risk_pie.y_array_s1, type:"pie"}];
+          const pie_data1 = [{labels:data.risk_pie.x_array, values:data.risk_pie.y_array_s1, type:"pie", marker:{colors: ["#ee4444", "#4444ee"]}}];
           Plotly.newPlot(div3, pie_data1, {title:"Risk Distribution Scenario 1"});
 
           container.appendChild(div4);
-          const pie_data2 = [{labels:data.risk_pie.x_array, values:data.risk_pie.y_array_s2, type:"pie"}];
+          const pie_data2 = [{labels:data.risk_pie.x_array, values:data.risk_pie.y_array_s2, type:"pie", marker:{colors: ["#ee4444", "#4444ee"]}}];
           Plotly.newPlot(div4, pie_data2, {title:"Risk Distribution Scenario 2"});
 
         } catch (error) {

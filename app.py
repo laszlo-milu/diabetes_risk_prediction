@@ -1,4 +1,3 @@
-import os
 import sqlite3
 from pathlib import Path
 
@@ -22,7 +21,8 @@ FEATURE_NAMES = ["age", "sex", "bmi", "bp", "s1", "s2", "s3", "s4", "s5", "s6"]
 RISK_LABELS = {0: "Not Endangered", 1: "Endangered"}
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
-model = None
+model_s1 = None
+model_s2 = None
 
 
 def get_db_connection():
@@ -104,8 +104,7 @@ def train_model(model_path:str, threshold):
 
 
 def load_models():
-    global model_s1
-    global model_s2
+    global model_s1, model_s2
     if MODEL_PATH_S1.exists():
         model_s1 = joblib.load(MODEL_PATH_S1)
     else:
@@ -118,6 +117,20 @@ def load_models():
 
     return model_s1, model_s2
 
+def create_scatter_data_and_layout(x, y, x_label, y_label, title):
+    return {
+        "data": [{
+            "x": x,
+            "y": y,
+            "mode": "markers"
+        }],
+        "layout": {
+            "xaxis": {"range": [min(x)-0.01, max(x)+0.01], "title": x_label},
+            "yaxis": {"range": [min(y)-10, max(y)+10], "title": y_label},
+            "title": title
+        }
+    }
+
 
 @app.route("/")
 def home():
@@ -128,7 +141,7 @@ def home():
 def status():
     return jsonify(
         {
-            "ready": model is not None,
+            "ready": model_s1 is not None and model_s2 is not None,
             "database": str(DB_PATH),
             "model_file1": str(MODEL_PATH_S1),
             "model_file2": str(MODEL_PATH_S2),
@@ -144,14 +157,13 @@ def summary():
     cursor.execute("SELECT COUNT(*) as count FROM patients")
     count = cursor.fetchone()[0]
     
-    cursor.execute("SELECT AVG(age), AVG(sex), AVG(bmi), AVG(bp), AVG(s1), AVG(s2), AVG(s3), AVG(s4), AVG(s5), AVG(s6), AVG(target) FROM patients")
-    avgs = cursor.fetchone()
-    
-    cursor.execute("SELECT MIN(age), MIN(sex), MIN(bmi), MIN(bp), MIN(s1), MIN(s2), MIN(s3), MIN(s4), MIN(s5), MIN(s6), MIN(target) FROM patients")
-    mins = cursor.fetchone()
-    
-    cursor.execute("SELECT MAX(age), MAX(sex), MAX(bmi), MAX(bp), MAX(s1), MAX(s2), MAX(s3), MAX(s4), MAX(s5), MAX(s6), MAX(target) FROM patients")
-    maxs = cursor.fetchone()
+    cursor.execute("""
+        SELECT 
+            AVG(age), AVG(sex), AVG(bmi), AVG(bp), AVG(s1), AVG(s2), AVG(s3), AVG(s4), AVG(s5), AVG(s6), AVG(target),
+            MIN(age), MIN(sex), MIN(bmi), MIN(bp), MIN(s1), MIN(s2), MIN(s3), MIN(s4), MIN(s5), MIN(s6), MIN(target),
+            MAX(age), MAX(sex), MAX(bmi), MAX(bp), MAX(s1), MAX(s2), MAX(s3), MAX(s4), MAX(s5), MAX(s6), MAX(target)
+        FROM patients""")
+    query = cursor.fetchone()
     
     cursor.execute("SELECT COUNT(*) as count FROM patients WHERE target > ?", (THRESHOLD_S1,))
     risk_counts_s1 = cursor.fetchone()[0]
@@ -159,11 +171,13 @@ def summary():
     cursor.execute("SELECT COUNT(*) as count FROM patients WHERE target > ?", (THRESHOLD_S2,))
     risk_counts_s2 = cursor.fetchone()[0]
 
+    conn.close()
+
     return jsonify({
         "total_patients": count,
-        "averages": dict(zip(FEATURE_NAMES + ["target"], avgs[:-1])),
-        "mins": dict(zip(FEATURE_NAMES + ["target"], mins[:-1])),
-        "maxs": dict(zip(FEATURE_NAMES + ["target"], maxs[:-1])),
+        "averages": dict(zip(FEATURE_NAMES + ["target"], query[:11])),
+        "mins": dict(zip(FEATURE_NAMES + ["target"], query[11:22])),
+        "maxs": dict(zip(FEATURE_NAMES + ["target"], query[22:33])),
         "risk_distribution": [risk_counts_s1, risk_counts_s2]
     })
 
@@ -175,41 +189,22 @@ def visualizations():
     cursor.execute("SELECT bmi, bp, target FROM patients")
     rows = cursor.fetchall()
     conn.close()
-    
+
+    bmi, bp, target = zip(*rows)
     data = {
-        "bmi": [row[0] for row in rows],
-        "bp": [row[1] for row in rows],
-        "target": [row[2] for row in rows]
+        "bmi": list(bmi),
+        "bp": list(bp),
+        "target": list(target),
     }
 
     # Scatter plot of BMI vs Target
-    bmi_scatter_data = [{
-        "x": data["bmi"],
-        "y": data["target"],
-        "mode": "markers"
-    }]
-    
-    bmi_layout = {
-        "xaxis": {"range": [min(data["bmi"])-0.01, max(data["bmi"])+0.01], "title": "BMI"},
-        "yaxis": {"range": [min(data["target"])-10, max(data["target"])+10], "title": "Target"},
-        "title": "BMI vs Target Scatter"
-    }
+    bmi_plot = create_scatter_data_and_layout(data["bmi"], data["target"], "BMI", "Target", "BMI vs Target Scatter")
 
     # Scatter plot of BP vs Target
-    bp_scatter_data = [{
-        "x": data["bp"],
-        "y": data["target"],
-        "mode": "markers"
-    }]
-
-    bp_layout = {
-        "xaxis": {"range": [min(data["bp"])-0.01, max(data["bp"])+0.01], "title": "Blood Pressure"},
-        "yaxis": {"range": [min(data["target"])-10, max(data["target"])+10], "title": "Target"},
-        "title": "Blood Pressure vs Target Scatter"
-    }
+    bp_plot = create_scatter_data_and_layout(data["bp"], data["target"], "Blood Pressure", "Target", "Blood Pressure vs Target Scatter")
     
     # Risk distribution pie chart
-    x_pie = ["Not Endangered", "Endangered"]
+    x_pie = [RISK_LABELS[1], RISK_LABELS[0]]
 
     at_risk_s1 = 0
     at_risk_s2 = 0
@@ -219,16 +214,10 @@ def visualizations():
             at_risk_s1 += 1
             if t > THRESHOLD_S2:
                 at_risk_s2 += 1
-   
+
     return jsonify({
-        "bmi_target_scatter": { 
-            "data": bmi_scatter_data,
-            "layout": bmi_layout
-        },
-        "bp_target_scatter": { 
-            "data": bp_scatter_data,
-            "layout": bp_layout
-        },
+        "bmi_target_scatter": bmi_plot,
+        "bp_target_scatter": bp_plot,
         "risk_pie": {
             "x_array": x_pie,
             "y_array_s1": [at_risk_s1, (len(data["target"]) - at_risk_s1)],
@@ -246,15 +235,12 @@ def predict():
     if not payload:
         return jsonify({"error": "Invalid JSON payload."}), 400
 
-    features = []
-    for name in FEATURE_NAMES:
-        value = payload.get(name)
-        if value is None:
-            return jsonify({"error": f"Missing feature: {name}"}), 400
-        try:
-            features.append(float(value))
-        except (TypeError, ValueError):
-            return jsonify({"error": f"Invalid value for feature: {name}"}), 400
+    try:
+        features = [float(payload[name]) for name in FEATURE_NAMES]
+    except KeyError as e:
+        return jsonify({"error": f"Missing feature: {e.args[0]}"}), 400
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid feature value"}), 400
 
     X = np.array([features], dtype=float)
     prediction_s1 = model_s1.predict(X)[0]
@@ -267,10 +253,8 @@ def predict():
 
     return jsonify(
         {
-            "risk_s1": int(prediction_s1),
             "risk_label_s1": RISK_LABELS[int(prediction_s1)],
             "risk_probability_s1": round(risk_proba_s1, 4),
-            "risk_s2": int(prediction_s2),
             "risk_label_s2": RISK_LABELS[int(prediction_s2)],
             "risk_probability_s2": round(risk_proba_s2, 4),
             "features": dict(zip(FEATURE_NAMES, features)),
