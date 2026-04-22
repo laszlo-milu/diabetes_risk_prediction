@@ -63,8 +63,10 @@ Open `http://127.0.0.1:5000` in your browser.
 ## Files
 
 - `app.py` - Flask backend and API endpoints
+- `create_db.py` - used to create and initialize the db
 - `templates/index.html` - frontend user interface
 - `static/style.css` - styling for the web UI
+- `static/app.js` - scripts for the web UI
 - `data/diabetes.db` - SQLite database created on first run
 - `requirements.txt` - Python dependencies
 

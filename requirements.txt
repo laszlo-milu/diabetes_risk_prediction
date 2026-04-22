@@ -3,4 +3,3 @@ scikit-learn>=1.0
 joblib>=1.0
 numpy>=1.20
 plotly>=5.0
-pandas>=3.0
